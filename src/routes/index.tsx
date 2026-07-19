@@ -3,9 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { PartyPopper, Camera, MapPin, Calendar, Clock as ClockIcon, Wallet, X } from "lucide-react";
 import { Minus, Plus, ShoppingBag, Sparkles, Heart, Clock, Truck } from "lucide-react";
 import heroBread from "@/assets/hero-bread.jpg";
-// Temporary fallback since foil-cakes and parfait files are corrupted
-import parfaitImg from "@/assets/hero-bread.jpg";
-import foilCakesImg from "@/assets/hero-bread.jpg";
+import parfaitImg from "@/assets/parfait.jpg";
+import foilCakesImg from "@/assets/foil-cakes.png";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
