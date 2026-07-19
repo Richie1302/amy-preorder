@@ -1,47 +1,43 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PartyPopper, Camera, MapPin, Calendar, Clock as ClockIcon, Wallet, X } from "lucide-react";
 import { Minus, Plus, ShoppingBag, Sparkles, Heart, Clock, Truck } from "lucide-react";
 import heroBread from "@/assets/hero-bread.jpg";
 // Temporary fallback since foil-cakes and parfait files are corrupted
 import parfaitImg from "@/assets/hero-bread.jpg";
 import foilCakesImg from "@/assets/hero-bread.jpg";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
   component: AmysDelight,
 });
 
-type Item = { id: string; name: string; price: number; category: string };
+type Item = { id: string; name: string; price: number; category: string; stock: number };
 
 const MICRO: Item[] = [
-  { id: "micro-classic", name: "Classic", price: 1000, category: "Micro Banana Bread" },
-  { id: "micro-choc", name: "Chocolate Chips", price: 1700, category: "Micro Banana Bread" },
-  { id: "micro-coco", name: "Coconut Crunch", price: 1700, category: "Micro Banana Bread" },
-  { id: "micro-oreo", name: "Oreos Crunch", price: 1700, category: "Micro Banana Bread" },
-  { id: "micro-raisin", name: "Raisin Bliss", price: 1700, category: "Micro Banana Bread" },
+  { id: "micro-classic", name: "Classic", price: 1500, category: "Micro Banana Bread", stock: 50 },
+  { id: "micro-choc", name: "Chocolate Chips", price: 2000, category: "Micro Banana Bread", stock: 25 },
+  { id: "micro-coco", name: "Coconut Crunch", price: 2000, category: "Micro Banana Bread", stock: 10 },
+  { id: "micro-oreo", name: "Oreos Crunch", price: 2000, category: "Micro Banana Bread", stock: 15 },
 ];
 const MINI: Item[] = [
-  { id: "mini-classic", name: "Classic", price: 2000, category: "Mini Banana Bread" },
-  { id: "mini-coco", name: "Coconut Crunch", price: 2700, category: "Mini Banana Bread" },
-  { id: "mini-choc", name: "Chocolate Chips", price: 2700, category: "Mini Banana Bread" },
-  { id: "mini-oreo", name: "Oreo Crunch", price: 2700, category: "Mini Banana Bread" },
-  { id: "mini-raisin", name: "Raisin Bliss", price: 2700, category: "Mini Banana Bread" },
+  { id: "mini-classic", name: "Classic", price: 2500, category: "Mini Banana Bread", stock: 50 },
+  { id: "mini-coco", name: "Coconut Crunch", price: 3000, category: "Mini Banana Bread", stock: 10 },
+  { id: "mini-choc", name: "Chocolate Chips", price: 3000, category: "Mini Banana Bread", stock: 25 },
+  { id: "mini-oreo", name: "Oreo Crunch", price: 3000, category: "Mini Banana Bread", stock: 15 },
 ];
 const MAXI: Item[] = [
-  { id: "maxi-classic", name: "Classic", price: 5000, category: "Maxi Banana Bread" },
-  { id: "maxi-choc", name: "Chocolate Chips", price: 6000, category: "Maxi Banana Bread" },
-  { id: "maxi-coco", name: "Coconut Crunch", price: 5500, category: "Maxi Banana Bread" },
-  { id: "maxi-oreo", name: "Oreos Crunch", price: 5500, category: "Maxi Banana Bread" },
-  { id: "maxi-raisin", name: "Raisin Bliss", price: 6000, category: "Maxi Banana Bread" },
+  { id: "maxi-classic", name: "Classic", price: 5000, category: "Maxi Banana Bread", stock: 3 },
+  { id: "maxi-coco", name: "Coconut Crunch", price: 6000, category: "Maxi Banana Bread", stock: 2 },
 ];
 const FOIL: Item[] = [
-  { id: "foil-vanilla", name: "Foil Vanilla Cake", price: 2500, category: "Foil Cakes" },
-  { id: "foil-choc", name: "Foil Chocolate Cake", price: 2500, category: "Foil Cakes" },
-  { id: "foil-velvet", name: "Foil Red Velvet Cake", price: 2500, category: "Foil Cakes" },
+  { id: "foil-vanilla", name: "Foil Vanilla Cake", price: 3000, category: "Foil Cakes", stock: 30 },
+  { id: "foil-choc", name: "Foil Chocolate Cake", price: 3000, category: "Foil Cakes", stock: 30 },
+  { id: "foil-velvet", name: "Foil Red Velvet Cake", price: 3000, category: "Foil Cakes", stock: 30 },
 ];
 const PARFAITS: Item[] = [
-  { id: "parfait-yog", name: "Yoghurt Parfait", price: 3500, category: "Parfaits" },
-  { id: "parfait-cake", name: "Cake Parfait", price: 3000, category: "Parfaits" },
+  { id: "parfait-yog", name: "Yoghurt Parfait", price: 4000, category: "Parfaits", stock: 30 },
+  { id: "parfait-cake", name: "Cake Parfait", price: 3500, category: "Parfaits", stock: 30 },
 ];
 
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
@@ -84,6 +80,10 @@ function AmysDelight() {
   const [customer, setCustomer] = useState({ name: "", phone: "", notes: "" });
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [activeCategory, setActiveCategory] = useState("micro");
+  // Live stock from Supabase — keyed by item id
+  const [liveStock, setLiveStock] = useState<Record<string, number>>({});
+  const [stockLoading, setStockLoading] = useState(true);
+  const [orderLoading, setOrderLoading] = useState(false);
 
   const categories = useMemo(() => [
     { id: "micro", title: "Micro Banana Bread", items: MICRO, image: heroBread },
@@ -107,30 +107,140 @@ function AmysDelight() {
   const total = lineItems.reduce((s, l) => s + l.subtotal, 0);
   const totalQty = lineItems.reduce((s, l) => s + l.qty, 0);
 
-  const add = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+  // Helper: get effective remaining stock (live DB value, fallback to hardcoded)
+  const getStock = (id: string) => {
+    const item = items.find((i) => i.id === id)!;
+    return id in liveStock ? liveStock[id] : item.stock;
+  };
+
+  const add = (id: string) =>
+    setCart((c) => {
+      const current = c[id] ?? 0;
+      if (current >= getStock(id)) return c;
+      return { ...c, [id]: current + 1 };
+    });
   const sub = (id: string) =>
     setCart((c) => ({ ...c, [id]: Math.max(0, (c[id] ?? 0) - 1) }));
 
-  const submitOrder = (e: React.FormEvent) => {
+  // Fetch live stock on mount + subscribe to real-time changes
+  useEffect(() => {
+    const fetchStock = async () => {
+      setStockLoading(true);
+      const { data, error } = await supabase
+        .from("item_stock")
+        .select("id, stock_remaining");
+      if (data && !error) {
+        const map: Record<string, number> = {};
+        data.forEach((row) => { map[row.id] = row.stock_remaining; });
+        setLiveStock(map);
+      }
+      setStockLoading(false);
+    };
+
+    fetchStock();
+
+    // Real-time: update a single item's stock when DB changes
+    const channel = supabase
+      .channel("item_stock_changes")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "item_stock" },
+        (payload) => {
+          const updated = payload.new as { id: string; stock_remaining: number };
+          setLiveStock((prev) => ({ ...prev, [updated.id]: updated.stock_remaining }));
+          // If cart has more than new stock, trim it down
+          setCart((c) => {
+            const current = c[updated.id] ?? 0;
+            if (current > updated.stock_remaining) {
+              return { ...c, [updated.id]: updated.stock_remaining };
+            }
+            return c;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const submitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (lineItems.length === 0) {
       alert("Add at least one item to your basket first.");
       return;
     }
-    // Globally-unique order reference: base36 timestamp + random suffix.
-    // Two clients can never receive the same ref, even offline.
-    const stamp = Date.now().toString(36).toUpperCase().slice(-5);
-    const rand = Math.random().toString(36).toUpperCase().slice(2, 5);
-    const ref = `AMY-${stamp}${rand}`;
 
-    setConfirmation({
-      ref,
-      name: customer.name,
-      phone: customer.phone,
-      notes: customer.notes,
-      lines: lineItems,
-      total,
-    });
+    setOrderLoading(true);
+
+    try {
+      // Atomically decrement stock for every line item.
+      // The SQL function fails if stock is insufficient — preventing overselling.
+      for (const line of lineItems) {
+        const { error } = await supabase.rpc("decrement_stock", {
+          p_id: line.id,
+          p_amount: line.qty,
+        });
+        if (error) {
+          // Refresh stock so the UI reflects the true remaining quantities
+          const { data } = await supabase.from("item_stock").select("id, stock_remaining");
+          if (data) {
+            const map: Record<string, number> = {};
+            data.forEach((row) => { map[row.id] = row.stock_remaining; });
+            setLiveStock(map);
+            // Trim cart to match new stock
+            setCart((c) => {
+              const updated = { ...c };
+              data.forEach((row) => {
+                if ((updated[row.id] ?? 0) > row.stock_remaining) {
+                  updated[row.id] = row.stock_remaining;
+                }
+              });
+              return updated;
+            });
+          }
+          alert(`Sorry! "${line.name}" just sold out while you were ordering. Your basket has been updated — please review and try again.`);
+          setOrderLoading(false);
+          return;
+        }
+      }
+
+      // All stock decremented successfully
+      const stamp = Date.now().toString(36).toUpperCase().slice(-5);
+      const rand = Math.random().toString(36).toUpperCase().slice(2, 5);
+      const ref = `AMY-${stamp}${rand}`;
+
+      const orderPayload = {
+        ref,
+        customer_name: customer.name,
+        customer_phone: customer.phone,
+        notes: customer.notes,
+        items: lineItems.map((l) => ({
+          id: l.id,
+          name: l.name,
+          category: l.category,
+          qty: l.qty,
+          price: l.price,
+          subtotal: l.subtotal,
+        })),
+        total,
+      };
+
+      // Save order to database
+      await supabase.from("orders").insert(orderPayload);
+
+      setConfirmation({
+        ref,
+        name: customer.name,
+        phone: customer.phone,
+        notes: customer.notes,
+        lines: lineItems,
+        total,
+      });
+    } catch {
+      alert("Something went wrong placing your order. Please try again.");
+    } finally {
+      setOrderLoading(false);
+    }
   };
 
   const closeConfirmation = () => {
@@ -267,18 +377,35 @@ function AmysDelight() {
           <ul className="divide-y divide-border/60">
             {activeTab.items.map((item, index) => {
                const qty = cart[item.id] ?? 0;
+               const itemStock = getStock(item.id);
+               const isOutOfStock = itemStock === 0;
+               const isMaxReached = qty >= itemStock;
+               const isLowStock = itemStock > 0 && itemStock <= 5;
                return (
                   <li key={item.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-secondary/30 transition-colors animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both" style={{ animationDelay: `${index * 50}ms` }}>
                      <div className="flex-1 min-w-0">
-                        <div className="font-display text-lg sm:text-xl truncate">{item.name}</div>
+                        <div className={`font-display text-lg sm:text-xl truncate ${isOutOfStock ? "opacity-50" : ""}`}>{item.name}</div>
+                        {isLowStock && !isOutOfStock && (
+                          <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--caramel)" }}>Only {Math.max(0, itemStock - qty)} left!</div>
+                        )}
                      </div>
                      <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4">
-                        <div className="font-semibold tabular-nums text-base">₦{item.price.toLocaleString()}</div>
-                        {qty > 0 ? (
+                        <div className={`font-semibold tabular-nums text-base ${isOutOfStock ? "opacity-50" : ""}`}>₦{item.price.toLocaleString()}</div>
+                        {isOutOfStock ? (
+                           <span className="rounded-full bg-destructive/10 text-destructive px-4 py-2 text-xs font-bold uppercase tracking-wider">Out of Stock</span>
+                        ) : qty > 0 ? (
                            <div className="flex items-center gap-2 bg-primary text-primary-foreground rounded-full p-1 shadow-md animate-in zoom-in-95 duration-200">
                              <button onClick={() => sub(item.id)} className="size-8 rounded-full bg-background/20 hover:bg-background/30 grid place-items-center active:scale-75 transition-all"><Minus className="size-4" /></button>
                              <span className="w-6 text-center text-sm font-semibold">{qty}</span>
-                             <button onClick={() => add(item.id)} className="size-8 rounded-full bg-background/20 hover:bg-background/30 grid place-items-center active:scale-75 transition-all"><Plus className="size-4" /></button>
+                             <button
+                               onClick={() => add(item.id)}
+                               disabled={isMaxReached}
+                               className={`size-8 rounded-full grid place-items-center transition-all ${
+                                 isMaxReached
+                                   ? "bg-background/10 opacity-40 cursor-not-allowed"
+                                   : "bg-background/20 hover:bg-background/30 active:scale-75"
+                               }`}
+                             ><Plus className="size-4" /></button>
                            </div>
                         ) : (
                            <button onClick={() => add(item.id)} className="flex items-center gap-1.5 bg-secondary text-primary hover:bg-primary hover:text-primary-foreground rounded-full px-5 py-2 text-sm font-semibold shadow-sm transition-all active:scale-95">
@@ -346,19 +473,24 @@ function AmysDelight() {
                           type="button"
                           onClick={() => sub(l.id)}
                           className="size-8 shrink-0 rounded-full border border-border bg-background hover:bg-secondary grid place-items-center"
-                        aria-label={`Remove one ${l.name}`}
-                      >
-                        <Minus className="size-4" />
-                      </button>
-                      <span className="w-6 text-center font-semibold">{l.qty}</span>
-                      <button
-                        type="button"
-                        onClick={() => add(l.id)}
-                        className="size-8 shrink-0 rounded-full bg-primary text-primary-foreground grid place-items-center hover:opacity-90"
-                        aria-label={`Add one ${l.name}`}
-                      >
-                        <Plus className="size-4" />
-                      </button>
+                          aria-label={`Remove one ${l.name}`}
+                        >
+                          <Minus className="size-4" />
+                        </button>
+                        <span className="w-6 text-center font-semibold">{l.qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => add(l.id)}
+                          disabled={l.qty >= getStock(l.id)}
+                          className={`size-8 shrink-0 rounded-full grid place-items-center transition-all ${
+                            l.qty >= getStock(l.id)
+                              ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
+                              : "bg-primary text-primary-foreground hover:opacity-90"
+                          }`}
+                          aria-label={`Add one ${l.name}`}
+                        >
+                          <Plus className="size-4" />
+                        </button>
                       </div>
                     </div>
                     <div className="hidden sm:block w-24 text-right font-semibold">{fmt(l.subtotal)}</div>
@@ -410,10 +542,26 @@ function AmysDelight() {
             </Field>
             <button
               type="submit"
-              className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-primary text-primary-foreground py-3 font-semibold shadow-[var(--shadow-warm)] hover:-translate-y-0.5 transition-all"
+              disabled={orderLoading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-primary text-primary-foreground py-3 font-semibold shadow-[var(--shadow-warm)] hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
             >
-              Place pre-order <PartyPopper className="size-4" />
+              {orderLoading ? (
+                <>
+                  <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Placing order…
+                </>
+              ) : (
+                <>Place pre-order <PartyPopper className="size-4" /></>
+              )}
             </button>
+            {stockLoading && (
+              <p className="text-xs text-muted-foreground text-center animate-pulse">
+                Loading live stock…
+              </p>
+            )}
             <p className="text-xs text-muted-foreground text-center">
               Please pre-order at least 24 hours ahead so everything is fresh from the oven. Pay on collection.
             </p>
@@ -528,7 +676,7 @@ function ConfirmationModal({ data, onClose }: { data: Confirmation; onClose: () 
           </div>
         </div>
 
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 space-y-3">
           <a
             href={buildWhatsAppUrl(data)}
             target="_blank"
@@ -541,9 +689,16 @@ function ConfirmationModal({ data, onClose }: { data: Confirmation; onClose: () 
             </svg>
             Send order to Amy on WhatsApp
           </a>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center gap-2 w-full rounded-full py-3.5 font-semibold shadow-[var(--shadow-soft)] hover:opacity-90 active:scale-95 transition-all"
+            style={{ background: "var(--gradient-cocoa)", color: "var(--cream)" }}
+          >
+            Done — back to menu
+          </button>
+          <p className="text-center text-xs text-muted-foreground">
             <Camera className="inline size-3.5 mr-1" />
-            Or screenshot this screen as your proof of order
+            Screenshot this screen as your proof of order at pickup
           </p>
         </div>
       </div>
